@@ -1,268 +1,240 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
-import { useAuth0 } from '@auth0/auth0-react';
 
-import rockHand from './assets/rock.jpg';
-import paperHand from './assets/paper.jpg';
-import scissorsHand from './assets/scissors.jpg';
+import rockImg from './assets/rock.jpg';
+import paperImg from './assets/paper.jpg';
+import scissorsImg from './assets/scissors.jpg';
 
-const actions = { rock: rockHand, paper: paperHand, scissors: scissorsHand };
+const actions = { rock: rockImg, paper: paperImg, scissors: scissorsImg };
 
 export default function App() {
-  const {
-    loginWithRedirect,
-    logout,
-    isAuthenticated,
-    isLoading,
-    user,
-    getAccessTokenSilently,
-  } = useAuth0();
+  // Splash screen state
+  const [name, setName] = useState('');
+  const [started, setStarted] = useState(false);
 
-  // Show only the first name
-  const firstName = user?.name?.split(' ')[0] || 'Player';
+  // Game flow
+  const [mode, setMode] = useState('training');
+  const trainingLimit = 10;
+  const [moveCount, setMoveCount] = useState(0);
 
-  // Game mode: "training" or "battle"
-  const [gameMode, setGameMode] = useState('training');
-  // Once training is done, we remain in battle mode for subsequent rounds.
-  const [hasTrained, setHasTrained] = useState(false);
-
-  // Moves
-  const [playerMove, setPlayerMove] = useState(null);
-  const [aiMove, setAiMove] = useState(null);
-
-  // Messages
+  // UI & moves
+  const [you, setYou] = useState(null);
+  const [ai, setAi] = useState(null);
   const [result, setResult] = useState('');
-  const [aiMessage, setAiMessage] = useState('');
-
-  // Animation/loading
+  const [msg, setMsg] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Score states
-  const [trainingScores, setTrainingScores] = useState({ player: 0, ai: 0, draws: 0 });
-  const [battleScores, setBattleScores] = useState({ player: 0, ai: 0, draws: 0 });
-  const [finalScores, setFinalScores] = useState({ player: 0, ai: 0, draws: 0 });
+  // Scores
+  const [tScores, setTScores] = useState({ you: 0, ai: 0, draws: 0 });
+  const [bScores, setBScores] = useState({ you: 0, ai: 0, draws: 0 });
+  const [final, setFinal] = useState({ you: 0, ai: 0, draws: 0 });
 
-  // Battle game-over
-  const [gameOver, setGameOver] = useState(false);
+  // Battle end
+  const [over, setOver] = useState(false);
   const [winner, setWinner] = useState(null);
 
-  const playGame = async (move) => {
-    if (loading || gameOver) return;
-    setLoading(true);
-    setPlayerMove(move);
-    setAiMove(null);
-    // Reserve text space so layout doesn't jump
-    setResult(' ');
-    setAiMessage(' ');
+  const startGame = () => {
+    if (name.trim()) setStarted(true);
+  };
 
-    const endpoint =
-      gameMode === 'training'
-        ? 'http://localhost:3001/train'
-        : 'http://localhost:3001/battle';
+  const play = async (move) => {
+    if (loading || over) return;
+    setLoading(true);
+    setYou(move);
+    setAi(null);
+    setResult(' ');
+    setMsg(' ');
+
+    const url =
+      mode === 'training'
+        ? 'http://localhost:5000/train'
+        : 'http://localhost:5000/battle';
 
     try {
-      const token = await getAccessTokenSilently();
-      const response = await axios.post(
-        endpoint,
-        { move },
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        }
+      const { data } = await axios.post(url, { move });
+      await new Promise((r) => setTimeout(r, 400));
+
+      setAi(data.ai_move);
+      setResult(
+        data.result === 'win'
+          ? 'You Win! 🎉'
+          : data.result === 'lose'
+          ? 'AI Wins! 😞'
+          : 'Draw! 🤝'
       );
+      setMsg(data.message);
 
-      // Wait briefly to let the animation play
-      await new Promise((r) => setTimeout(r, 500));
-
-      const data = response.data;
-      console.log(`[${gameMode.toUpperCase()}]`, data);
-
-      // Display AI move
-      setAiMove(data.ai_move);
-
-      if (gameMode === 'training') {
-        setTrainingScores(data.training_scores);
-        if (data.result === 'win') setResult('You Win!');
-        else if (data.result === 'lose') setResult('You Lose!');
-        else setResult('Draw!');
-        setAiMessage(data.message);
-
-        if (data.training_complete) {
-          setHasTrained(true);
-          setResult('Training complete! Switching to Battle Round...');
-          setTimeout(() => {
-            setGameMode('battle');
-            setResult('');
-            setAiMessage('');
-          }, 1200);
-        }
+      if (mode === 'training') {
+        setMoveCount((c) => c + 1);
+        setTScores((s) => ({
+          you: s.you + (data.result === 'win' ? 1 : 0),
+          ai: s.ai + (data.result === 'lose' ? 1 : 0),
+          draws: s.draws + (data.result === 'draw' ? 1 : 0),
+        }));
       } else {
-        const { battle_scores, final_scores, game_over, winner } = data;
-        if (game_over) {
-          setFinalScores(final_scores);
-          setGameOver(true);
-          setWinner(winner);
-        } else {
-          setBattleScores(battle_scores);
-        }
-        if (data.result === 'win') {
-          setResult('You Win!');
-          setAiMessage('AI is impressed...');
-        } else if (data.result === 'lose') {
-          setResult('You Lose!');
-          setAiMessage('AI strikes back!');
-        } else {
-          setResult('Draw!');
-          setAiMessage("It's a tie!");
-        }
+        setBScores((s) => ({
+          you: s.you + (data.result === 'win' ? 1 : 0),
+          ai: s.ai + (data.result === 'lose' ? 1 : 0),
+          draws: s.draws + (data.result === 'draw' ? 1 : 0),
+        }));
       }
-    } catch (err) {
-      console.error('Error contacting server:', err);
-      setResult('Error contacting AI server.');
+    } catch {
+      setResult('Error contacting server.');
     } finally {
       setLoading(false);
     }
   };
 
-  if (isLoading) return <div className="p-8 text-2xl text-center">Loading...</div>;
+  useEffect(() => {
+    if (mode === 'training' && moveCount >= trainingLimit) {
+      setResult('✅ Training complete!');
+      setTimeout(() => {
+        setMode('battle');
+        setResult('');
+        setMsg('');
+      }, 1200);
+    }
+  }, [moveCount, mode]);
+
+  useEffect(() => {
+    if (mode === 'battle') {
+      const y = bScores.you,
+        a = bScores.ai;
+      if (y >= 3 || a >= 3) {
+        setOver(true);
+        setWinner(y >= 3 ? 'you' : 'ai');
+        setFinal(bScores);
+      }
+    }
+  }, [bScores, mode]);
+
+  if (!started) {
+    return (
+      <div
+        style={{ backgroundColor: '#EDF6FF' }}
+        className="h-screen flex flex-col items-center justify-center px-4"
+      >
+        <h1 className="text-5xl mb-4">👋 Welcome to AI‑RPS!</h1>
+        <input
+          type="text"
+          placeholder="Your Name"
+          className="max-w-md w-full px-4 py-2 text-xl rounded-2xl shadow border-2 border-transparent focus:ring-4 focus:ring-blue-300 mb-4 text-center transition"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button
+          onClick={startGame}
+          disabled={!name.trim()}
+          className={`px-6 py-2 text-xl font-bold rounded-full transition ${
+            name.trim()
+              ? 'bg-blue-600 text-white hover:bg-blue-700'
+              : 'bg-gray-400 text-gray-200 cursor-not-allowed'
+          }`}
+        >
+          Play 🎮
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-200 text-black flex flex-col items-center justify-center p-6 relative overflow-hidden">
-      {/* Auth Buttons */}
-      <div className="absolute top-6 right-6 flex items-center gap-4 text-xl">
-        {isAuthenticated && (
-          <>
-            <span className="font-semibold">👋 {firstName}</span>
-            <button
-              onClick={() =>
-                logout({ logoutParams: { returnTo: window.location.origin } })
-              }
-              className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-700 transition"
-            >
-              Logout
-            </button>
-          </>
+    <div
+      style={{ backgroundColor: '#EDF6FF' }}
+      className="min-h-screen p-4 flex flex-col items-center relative"
+    >
+      <h1 className="text-4xl font-bold mt-2">{name}'s AI‑RPS</h1>
+      <div className="mt-2 mb-3">
+        {mode === 'training' ? (
+          <span className="text-lg font-semibold bg-green-100 text-green-800 px-3 py-1 rounded-full">
+            ⚙️ Training Round
+          </span>
+        ) : (
+          <span className="text-lg font-semibold bg-red-100 text-red-800 px-3 py-1 rounded-full">
+            🔥 Battle Round
+          </span>
         )}
       </div>
 
-      {/* Not Logged In */}
-      {!isAuthenticated && (
-        <div className="flex flex-col items-center justify-center h-[80vh] text-center">
-          <h1 className="text-5xl font-bold mb-6">Welcome to AI-RPS Game</h1>
-          <p className="text-2xl mb-6">Please log in to continue 🎮</p>
-          <button
-            onClick={() => loginWithRedirect()}
-            className="px-6 py-3 text-xl bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-          >
-            Login
-          </button>
+      <div className="flex justify-around w-full max-w-2xl bg-white p-3 rounded-xl shadow mb-4 text-2xl font-semibold">
+        <div className="text-blue-600">
+          {name}: {mode === 'training' ? tScores.you : bScores.you}
         </div>
-      )}
+        <div className="text-red-600">
+          AI: {mode === 'training' ? tScores.ai : bScores.ai}
+        </div>
+        <div className="text-gray-600">
+          Draws: {mode === 'training' ? tScores.draws : bScores.draws}
+        </div>
+      </div>
 
-      {/* Game UI for Authenticated Users */}
-      {isAuthenticated && (
-        <>
-          <h1 className="text-4xl font-bold mt-4 mb-2">
-            {gameMode === 'training'
-              ? 'Training Round (10 moves)'
-              : 'Battle Round (First to 3 wins)'}
-          </h1>
+      <div className="flex items-center justify-center space-x-12 mb-6">
+        <motion.img
+          src={you ? actions[you] : rockImg}
+          className="w-32 h-32 p-2 bg-white rounded-2xl shadow"
+          animate={{ x: loading ? [-10, 10, -10] : 0 }}
+          transition={{ duration: 0.15, repeat: loading ? Infinity : 0 }}
+        />
+        <motion.img
+          src={ai ? actions[ai] : rockImg}
+          className="w-32 h-32 p-2 bg-white rounded-2xl shadow"
+          animate={{ x: loading ? [10, -10, 10] : 0 }}
+          transition={{ duration: 0.15, repeat: loading ? Infinity : 0 }}
+        />
+      </div>
 
-          {/* Scoreboard */}
-          {gameMode === 'training' ? (
-            <div className="flex justify-around w-full max-w-3xl text-2xl my-4 p-4 border-2 rounded bg-white shadow-lg">
-              <p className="font-bold">
-                {firstName}: {trainingScores.player}
-              </p>
-              <p className="font-bold">AI: {trainingScores.ai}</p>
-              <p className="font-bold">Draws: {trainingScores.draws}</p>
-            </div>
-          ) : (
-            <div className="flex justify-around w-full max-w-3xl text-2xl my-4 p-4 border-2 rounded bg-white shadow-lg">
-              <p className="font-bold">
-                {firstName}: {battleScores.player}
-              </p>
-              <p className="font-bold">AI: {battleScores.ai}</p>
-              <p className="font-bold">Draws: {battleScores.draws}</p>
-            </div>
-          )}
-
-          {/* Hands */}
-          <div className="flex items-center justify-center space-x-16 mt-3">
-            <motion.img
-              src={playerMove ? actions[playerMove] : rockHand}
-              alt="player-hand"
-              className="w-32 h-32 bg-white p-2 rounded-lg shadow-md"
-              animate={{ x: loading ? [-15, 15, -15] : 0 }}
-              transition={{ repeat: loading ? Infinity : 0, duration: 0.15 }}
-            />
-            <motion.img
-              src={aiMove ? actions[aiMove] : rockHand}
-              alt="ai-hand"
-              className="w-32 h-32 bg-white p-2 rounded-lg shadow-md"
-              animate={{ x: loading ? [15, -15, 15] : 0 }}
-              transition={{ repeat: loading ? Infinity : 0, duration: 0.15 }}
-            />
-          </div>
-
-          {/* Hand Selection */}
-          <div className="flex space-x-6 mt-4">
-            {Object.keys(actions).map((action) => (
-              <motion.button
-                key={action}
-                onClick={() => playGame(action)}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-                className="flex flex-col items-center bg-gray-300 p-4 rounded-lg hover:bg-gray-400 transition"
-              >
-                <img src={actions[action]} alt={action} className="w-20 h-20" />
-                <span className="mt-2 text-xl font-bold">{action.toUpperCase()}</span>
-              </motion.button>
-            ))}
-          </div>
-
-          {/* Results + AI Message (fixed height to avoid layout jump) */}
-          <div
-            className="flex justify-between items-center mt-4 w-full max-w-3xl text-xl font-bold"
-            style={{ minHeight: '40px' }}
+      <div className="flex space-x-6 mb-6">
+        {Object.keys(actions).map((act) => (
+          <motion.button
+            key={act}
+            onClick={() => play(act)}
+            whileTap={{ scale: 0.9 }}
+            disabled={loading}
+            className="flex flex-col items-center bg-white p-2 rounded-full shadow hover:bg-gray-200 disabled:opacity-50"
           >
-            <motion.div className="text-left">{result}</motion.div>
-            <motion.div className="text-right italic font-bold">{aiMessage}</motion.div>
-          </div>
+            <img src={actions[act]} className="w-16 h-16" />
+            <span className="mt-1 text-base font-bold">{act.toUpperCase()}</span>
+          </motion.button>
+        ))}
+      </div>
 
-          {/* Battle Over Modal */}
-          {gameMode === 'battle' && gameOver && (
-            <motion.div
-              className="absolute inset-0 bg-gray-300 flex flex-col items-center justify-center z-50"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-            >
-              <h1 className="text-5xl font-bold mb-6">
-                {winner === 'player' ? '👨‍💻 YOU WIN! 🎉' : '🤖 AI WINS! 🔥'}
-              </h1>
-              <p className="text-2xl mb-6 font-bold">
-                Final Score - {firstName}: {finalScores.player} | AI: {finalScores.ai} |
-                Draws: {finalScores.draws}
-              </p>
-              <motion.button
-                onClick={() => {
-                  // Reset battle scoreboard, remain in battle mode (training only on first load)
-                  setBattleScores({ player: 0, ai: 0, draws: 0 });
-                  setFinalScores({ player: 0, ai: 0, draws: 0 });
-                  setGameOver(false);
-                  setWinner(null);
-                  setResult('');
-                  setAiMessage('');
-                }}
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-                className="text-2xl font-bold bg-red-500 text-white px-8 py-4 rounded-lg shadow-lg hover:bg-red-700 transition"
-              >
-                Play Again
-              </motion.button>
-            </motion.div>
-          )}
-        </>
+      <div
+        className="flex justify-between w-full max-w-2xl mb-6 text-xl font-bold"
+        style={{ minHeight: 30 }}
+      >
+        <div>{result}</div>
+        <div className="italic">{msg}</div>
+      </div>
+
+      {mode === 'battle' && over && (
+        <motion.div
+          className="absolute inset-0 flex flex-col items-center justify-center z-50 p-4"
+          style={{ backgroundColor: '#EDF6FF' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          <h1 className="text-4xl font-bold mb-4">
+            {winner === 'you' ? '🎉 YOU WIN!' : '😞 AI WINS!'}
+          </h1>
+          <p className="text-xl mb-6 font-semibold">
+            Final: {name}: {final.you} | AI: {final.ai} | Draws: {final.draws}
+          </p>
+          <motion.button
+            onClick={() => {
+              setBScores({ you: 0, ai: 0, draws: 0 });
+              setFinal({ you: 0, ai: 0, draws: 0 });
+              setOver(false);
+              setWinner(null);
+              setResult('');
+              setMsg('');
+            }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="px-6 py-2 bg-red-500 text-white text-xl font-bold rounded-full shadow hover:bg-red-700 transition"
+          >
+            Play Again
+          </motion.button>
+        </motion.div>
       )}
     </div>
   );
