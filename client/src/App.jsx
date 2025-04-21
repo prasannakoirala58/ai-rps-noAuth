@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+// src/App.jsx
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 
@@ -34,10 +35,12 @@ export default function App() {
   const [over, setOver] = useState(false);
   const [winner, setWinner] = useState(null);
 
+  // Start game
   const startGame = () => {
     if (name.trim()) setStarted(true);
   };
 
+  // Play one round via Node proxy at port 3001
   const play = async (move) => {
     if (loading || over) return;
     setLoading(true);
@@ -48,11 +51,12 @@ export default function App() {
 
     const url =
       mode === 'training'
-        ? 'http://localhost:5000/train'
-        : 'http://localhost:5000/battle';
+        ? 'http://localhost:3001/train'
+        : 'http://localhost:3001/battle';
 
     try {
       const { data } = await axios.post(url, { move });
+      // allow animation
       await new Promise((r) => setTimeout(r, 400));
 
       setAi(data.ai_move);
@@ -79,13 +83,15 @@ export default function App() {
           draws: s.draws + (data.result === 'draw' ? 1 : 0),
         }));
       }
-    } catch {
+    } catch (e) {
+      console.error('Error contacting server:', e);
       setResult('Error contacting server.');
     } finally {
       setLoading(false);
     }
   };
 
+  // Auto‑switch to battle after trainingLimit moves
   useEffect(() => {
     if (mode === 'training' && moveCount >= trainingLimit) {
       setResult('✅ Training complete!');
@@ -97,6 +103,7 @@ export default function App() {
     }
   }, [moveCount, mode]);
 
+  // Detect end of battle
   useEffect(() => {
     if (mode === 'battle') {
       const y = bScores.you,
@@ -109,6 +116,7 @@ export default function App() {
     }
   }, [bScores, mode]);
 
+  // --- Splash Screen ---
   if (!started) {
     return (
       <div
@@ -138,12 +146,15 @@ export default function App() {
     );
   }
 
+  // --- Main Game Screen ---
   return (
     <div
       style={{ backgroundColor: '#EDF6FF' }}
       className="min-h-screen p-4 flex flex-col items-center relative"
     >
       <h1 className="text-4xl font-bold mt-2">{name}'s AI‑RPS</h1>
+
+      {/* Round Badge */}
       <div className="mt-2 mb-3">
         {mode === 'training' ? (
           <span className="text-lg font-semibold bg-green-100 text-green-800 px-3 py-1 rounded-full">
@@ -156,6 +167,7 @@ export default function App() {
         )}
       </div>
 
+      {/* Scoreboard */}
       <div className="flex justify-around w-full max-w-2xl bg-white p-3 rounded-xl shadow mb-4 text-2xl font-semibold">
         <div className="text-blue-600">
           {name}: {mode === 'training' ? tScores.you : bScores.you}
@@ -168,6 +180,7 @@ export default function App() {
         </div>
       </div>
 
+      {/* Hands */}
       <div className="flex items-center justify-center space-x-12 mb-6">
         <motion.img
           src={you ? actions[you] : rockImg}
@@ -183,6 +196,7 @@ export default function App() {
         />
       </div>
 
+      {/* Choices */}
       <div className="flex space-x-6 mb-6">
         {Object.keys(actions).map((act) => (
           <motion.button
@@ -198,6 +212,7 @@ export default function App() {
         ))}
       </div>
 
+      {/* Result & Message */}
       <div
         className="flex justify-between w-full max-w-2xl mb-6 text-xl font-bold"
         style={{ minHeight: 30 }}
@@ -206,6 +221,7 @@ export default function App() {
         <div className="italic">{msg}</div>
       </div>
 
+      {/* Battle Over Modal */}
       {mode === 'battle' && over && (
         <motion.div
           className="absolute inset-0 flex flex-col items-center justify-center z-50 p-4"
